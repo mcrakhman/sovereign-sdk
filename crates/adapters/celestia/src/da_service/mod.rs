@@ -4,8 +4,8 @@ mod tests;
 pub use crate::config::CelestiaConfig;
 use crate::metrics::client::{
     BlobGetAllMeasurement, GetBlockHeaderMeasurement, GetChainHeadMeasurement,
-    GetNamespaceDataMeasurement, HeaderSyncStateMeasurement, StateBalanceForAddressMeasurement,
-    StateEstimateGasPriceMeasurement, SubmitPayForBlob,
+    GetLocalHeadMeasurement, GetNamespaceDataMeasurement, HeaderSyncStateMeasurement,
+    StateBalanceForAddressMeasurement, StateEstimateGasPriceMeasurement, SubmitPayForBlob,
 };
 use crate::metrics::full::{
     BlobSubmitMeasurement, CelestiaAdapterStateMeasurement, GetBlockMeasurement,
@@ -384,6 +384,27 @@ impl CelestiaService {
         Ok(CelestiaHeader::from(header))
     }
 
+    async fn get_local_head_block_header_inner(
+        &self,
+    ) -> Result<CelestiaHeader, MaybeRetryable<anyhow::Error>> {
+        tracing::trace!("Making call to header.LocalHead");
+        let start = std::time::Instant::now();
+        let result = tokio::time::timeout(self.request_timeout, self.client.header().head()).await;
+        let response_time = start.elapsed();
+        let is_success = matches!(result, Ok(Ok(_)));
+        tracing::trace!(
+            is_success,
+            ?response_time,
+            "Call to header.LocalHead is completed"
+        );
+        sov_metrics::track_metrics(|tracker| {
+            tracker.submit(GetLocalHeadMeasurement::new(response_time, is_success));
+        });
+        let header = flatten_timeout(result)?;
+
+        Ok(CelestiaHeader::from(header))
+    }
+
     async fn get_proofs_at_inner(
         &self,
         height: u64,
@@ -413,6 +434,18 @@ impl CelestiaService {
             .map(|blobs| blobs.into_iter().map(|blob| blob.data).collect())
             .unwrap_or_default();
         Ok(blobs)
+    }
+
+    /// Returns the latest header synchronized by the local node.
+    /// Unlike `get_head_block_header` which returns the network head,
+    /// this returns only what the node has actually synced locally.
+    pub async fn get_local_head_block_header(&self) -> Result<CelestiaHeader, anyhow::Error> {
+        run_maybe_retryable_async_fn_with_retries(
+            self.backoff_policy,
+            || self.get_local_head_block_header_inner(),
+            "get_local_head_block_header",
+        )
+        .await
     }
 
     /// Subscribe to finalized headers as they are finalized.

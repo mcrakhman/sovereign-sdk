@@ -29,6 +29,8 @@ pub(crate) struct BlobGetAll;
 #[derive(Debug)]
 pub(crate) struct StateBalanceForAddress;
 #[derive(Debug)]
+pub(crate) struct HeaderLocalHead;
+#[derive(Debug)]
 pub(crate) struct HeaderSyncState;
 #[derive(Debug)]
 pub(crate) struct StateEstimateGasPrice;
@@ -66,6 +68,12 @@ impl ApiCall for BlobGetAll {
 impl ApiCall for StateBalanceForAddress {
     fn measurement_name() -> &'static str {
         "sov_celestia_adapter_state_balance_for_address"
+    }
+}
+
+impl ApiCall for HeaderLocalHead {
+    fn measurement_name() -> &'static str {
+        "sov_celestia_adapter_header_local_head"
     }
 }
 
@@ -162,6 +170,7 @@ pub(crate) type GetChainHeadMeasurement = MeasuredApiCall<HeaderNetworkHead>;
 pub(crate) type GetNamespaceDataMeasurement = MeasuredApiCallWithNamespace<ShareGetNamespaceData>;
 pub(crate) type SubmitPayForBlob = MeasuredApiCallWithNamespace<StateSubmitPayForBlob>;
 pub(crate) type BlobGetAllMeasurement = MeasuredApiCall<BlobGetAll>;
+pub(crate) type GetLocalHeadMeasurement = MeasuredApiCall<HeaderLocalHead>;
 pub(crate) type StateBalanceForAddressMeasurement = MeasuredApiCall<StateBalanceForAddress>;
 pub(crate) type HeaderSyncStateMeasurement = MeasuredApiCall<HeaderSyncState>;
 pub(crate) type StateEstimateGasPriceMeasurement = MeasuredApiCall<StateEstimateGasPrice>;
