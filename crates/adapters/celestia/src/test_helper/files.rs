@@ -560,7 +560,7 @@ pub mod with_mixed_v0_and_v1_blobs {
         let mut data = vec![0u8; MEDIUM_BATCH_BYTES];
         rng.fill_bytes(&mut data);
         let blob =
-            celestia_types::Blob::new(ROLLUP_BATCH_NAMESPACE, data, None, APP_VERSION).unwrap();
+            celestia_types::Blob::new(ROLLUP_BATCH_NAMESPACE, data, None).unwrap();
 
         blobs.push(blob);
 
@@ -575,7 +575,7 @@ pub mod with_mixed_v0_and_v1_blobs {
             let mut data = vec![0u8; size];
             rng.fill_bytes(&mut data);
             let blob =
-                celestia_types::Blob::new(ROLLUP_BATCH_NAMESPACE, data, None, APP_VERSION).unwrap();
+                celestia_types::Blob::new(ROLLUP_BATCH_NAMESPACE, data, None).unwrap();
             blobs.push(blob);
         }
 
@@ -722,14 +722,14 @@ async fn save_blobs(
     write_to_file(&path.join(SIGNERS_JSON), &signers).unwrap();
     let rollup_batch_rows = client
         .share()
-        .get_namespace_data(block_header.height(), APP_VERSION, batch_namespace)
+        .get_namespace_data(block_header.height(), batch_namespace)
         .await
         .unwrap();
     write_to_file(&path.join(ROLLUP_BATCH_ROWS_JSON), &rollup_batch_rows).unwrap();
 
     let rollup_proof_rows = client
         .share()
-        .get_namespace_data(block_header.height(), APP_VERSION, proof_namespace)
+        .get_namespace_data(block_header.height(), proof_namespace)
         .await
         .unwrap();
     write_to_file(&path.join(ROLLUP_PROOF_ROWS_JSON), &rollup_proof_rows).unwrap();
