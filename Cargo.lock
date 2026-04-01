@@ -2051,7 +2051,7 @@ dependencies = [
  "bitflags 2.9.4",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.10.5",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -2071,7 +2071,7 @@ dependencies = [
  "bitflags 2.9.4",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.10.5",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -2543,9 +2543,9 @@ dependencies = [
 
 [[package]]
 name = "celestia-client"
-version = "1.0.0-rc.2"
+version = "1.0.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f0bf76bdc45df4bf797441b7c1a4c793d43f68352265b52292b4d7f668912c2"
+checksum = "112d481a5d8aaf4b528e7af06750f69d2fd559c5ad68030b9f8c756f4419bef9"
 dependencies = [
  "async-stream",
  "blockstore",
@@ -2571,9 +2571,9 @@ dependencies = [
 
 [[package]]
 name = "celestia-grpc"
-version = "1.0.0-rc.2"
+version = "1.0.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd6ef5819fcbf5c14decddffe5c6fdc1af42087644a4728dc02791ba37de7b5d"
+checksum = "ecd630a437e84de464bff387f99ea90fff7250ef298918eff5115a9c2342ab8b"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -2612,9 +2612,9 @@ dependencies = [
 
 [[package]]
 name = "celestia-grpc-macros"
-version = "1.0.0-rc.2"
+version = "1.0.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c780ebe970148f575c3ba282ee5438494781e25f186e0b42dfdd61bcd3f03ab8"
+checksum = "56f699808d11af7d64058c38f41aa725e64868807f39407d6aac965c104251ea"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2623,9 +2623,9 @@ dependencies = [
 
 [[package]]
 name = "celestia-proto"
-version = "1.0.0-rc.2"
+version = "1.0.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5dc4941dae9e09856eb10b408fe7da04df2806c2a05991e23383eafd32354155"
+checksum = "d0a3d137fca11de6e3bd01f8941115ccbaa9d5717fadb5224aba6b222436c572"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -2642,9 +2642,9 @@ dependencies = [
 
 [[package]]
 name = "celestia-rpc"
-version = "1.0.0-rc.2"
+version = "1.0.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ee373b23ad738dc22e3227431b39286e0b75cd4d02c86ea6a5fb3d059e1f944"
+checksum = "6966e2b4c87a7942344e662a87552568720f53a628cfeb61b8d215fa7f8c17e3"
 dependencies = [
  "async-stream",
  "base64 0.22.1",
@@ -2669,9 +2669,9 @@ dependencies = [
 
 [[package]]
 name = "celestia-types"
-version = "1.0.0-rc.2"
+version = "1.0.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b83959544e05771d4acc127e348f54faa7212e96c23b75def8bbbfa857231516"
+checksum = "ce2ec220ae1d1337d6b97de17c59065ce01d0605a92aaa052a4ee8959caf11e0"
 dependencies = [
  "base64 0.22.1",
  "bech32",
@@ -3819,7 +3819,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.2",
- "windows-sys 0.61.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4143,7 +4143,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -6062,7 +6062,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.53.3",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -6222,9 +6222,9 @@ checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
 name = "lumina-utils"
-version = "1.0.0-rc.2"
+version = "1.0.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f19be133d49b6c3785db7e499a06b9fc31acbab0a9c909082fc2d70e23195f11"
+checksum = "d341e9ad62cdfacf22e62493f89eccd6aca1851393046a474bc9dba451d6c68c"
 dependencies = [
  "futures",
  "gloo-timers 0.3.0",
@@ -6925,7 +6925,7 @@ version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77e878c846a8abae00dd069496dbe8751b16ac1c3d6bd2a7283a938e8228f90d"
 dependencies = [
- "proc-macro-crate 3.3.0",
+ "proc-macro-crate 1.3.1",
  "proc-macro2",
  "quote",
  "syn 2.0.106",
@@ -8109,8 +8109,8 @@ version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be769465445e8c1474e9c5dac2018218498557af32d9ed057325ec9a41ae81bf"
 dependencies = [
- "heck 0.5.0",
- "itertools 0.14.0",
+ "heck 0.4.1",
+ "itertools 0.10.5",
  "log",
  "multimap",
  "once_cell",
@@ -8130,7 +8130,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.10.5",
  "proc-macro2",
  "quote",
  "syn 2.0.106",
@@ -8143,7 +8143,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9120690fafc389a67ba3803df527d0ec9cbbc9cc45e4cc20b332996dfb672425"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.10.5",
  "proc-macro2",
  "quote",
  "syn 2.0.106",
@@ -9757,7 +9757,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -13653,7 +13653,7 @@ dependencies = [
  "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.61.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -15264,7 +15264,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
