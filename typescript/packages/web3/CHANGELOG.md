@@ -1,5 +1,23 @@
 # @sovereign-sdk/web3
 
+## 0.13.1
+
+### Patch Changes
+
+-   c6b4d0f: add `hydrate` method to solana signable rollup impl
+
+## 0.13.0
+
+### Minor Changes
+
+-   e4a7b37: Consolidate rollup schema fetching so both serializer and chain hash are populated from a single request. Add `hydrate()` method for eager pre-fetching during initialization.
+
+## 0.12.6
+
+### Patch Changes
+
+-   ff01be7: Fix shape of submitted payload to match convention from other authenticators
+
 ## 0.12.5
 
 ### Patch Changes

@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use axum::extract::{ConnectInfo, State};
 use axum::response::IntoResponse;
 use axum::routing::post;
@@ -10,9 +11,8 @@ use serde::{Deserialize, Serialize};
 use sov_db::ledger_db::LedgerDb;
 use sov_modules_api::capabilities::{HasCapabilities, HasKernel, TransactionAuthenticator};
 use sov_modules_api::execution_mode::Native;
-use sov_modules_api::prelude::axum::async_trait;
 use sov_modules_api::rest::{HasRestApi, StateUpdateReceiver};
-use sov_modules_api::{NodeEndpoints, RawTx, Spec, SyncStatus};
+use sov_modules_api::{DaSpec, NodeEndpoints, RawTx, Spec, SyncStatus};
 use sov_modules_rollup_blueprint::pluggable_traits::PluggableSpec;
 use sov_modules_rollup_blueprint::{FullNodeBlueprint, RollupBlueprint, SequencerCreationReceipt};
 use sov_modules_stf_blueprint::Runtime as RuntimeTrait;
@@ -107,6 +107,7 @@ where
         sequencer: Seq,
         _rollup_config: &RollupConfig<<Self::Spec as Spec>::Address, Self::DaService>,
         _shutdown_receiver: tokio::sync::watch::Receiver<()>,
+        _sequencer_da_address: <<Self::Spec as Spec>::Da as DaSpec>::Address,
     ) -> anyhow::Result<NodeEndpoints>
     where
         Seq: Sequencer<Spec = Self::Spec, Rt = Self::Runtime, Da = Self::DaService>,
@@ -151,8 +152,10 @@ where
     fn create_storage_manager(
         &self,
         rollup_config: &RollupConfig<<Self::Spec as Spec>::Address, Self::DaService>,
+        witness_generation: bool,
     ) -> anyhow::Result<Self::StorageManager> {
-        self.inner.create_storage_manager(rollup_config)
+        self.inner
+            .create_storage_manager(rollup_config, witness_generation)
     }
 
     fn create_proof_sender(

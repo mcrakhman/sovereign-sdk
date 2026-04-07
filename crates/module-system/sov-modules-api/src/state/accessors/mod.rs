@@ -37,7 +37,7 @@ mod temp_cache;
 pub use checkpoints::native::AccessoryStateCheckpoint;
 pub use checkpoints::{ChangeSet, StateCheckpoint};
 #[cfg(feature = "native")]
-pub use concurrent_state_checkpoint::ConcurrentStateCheckpoint;
+pub use concurrent_state_checkpoint::{ConcurrentStateCheckpoint, FinalizedSlotPolicy};
 pub use genesis::GenesisStateAccessor;
 pub use internals::AccessoryDelta;
 pub use kernel::{BootstrapWorkingSet, KernelStateAccessor};
@@ -98,6 +98,16 @@ pub trait StateProvider<S: Spec>:
 
 impl<S: Spec> StateProvider<S> for StateCheckpoint<S> {
     fn to_tx_scratchpad(self) -> TxScratchpad<S, StateCheckpoint<S>> {
+        TxScratchpad {
+            inner: RevertableWriter::new(self),
+            phantom: PhantomData,
+        }
+    }
+}
+
+#[cfg(feature = "native")]
+impl<S: Spec> StateProvider<S> for ApiStateAccessor<S> {
+    fn to_tx_scratchpad(self) -> TxScratchpad<S, ApiStateAccessor<S>> {
         TxScratchpad {
             inner: RevertableWriter::new(self),
             phantom: PhantomData,

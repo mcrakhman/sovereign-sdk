@@ -2,7 +2,7 @@ use std::num::NonZero;
 use std::sync::Arc;
 
 use crate::helpers::hash_stf::HashStf;
-use axum::async_trait;
+use async_trait::async_trait;
 use futures::stream::BoxStream;
 use futures::{Stream, StreamExt};
 use rockbound::SchemaBatch;
@@ -26,7 +26,6 @@ use sov_rollup_interface::node::da::DaService;
 use sov_rollup_interface::node::ledger_api::{AggregatedProofResponse, LedgerStateProvider};
 use sov_rollup_interface::storage::HierarchicalStorageManager;
 use sov_rollup_interface::zk::aggregated_proof::SerializedAggregatedProof;
-use sov_rollup_interface::zk::Zkvm;
 use sov_sequencer::standard::StdSequencerConfig;
 use sov_sequencer::{react_to_state_updates, SequencerConfig, SequencerKindConfig};
 use sov_state::NativeStorage;
@@ -47,10 +46,9 @@ use tokio::sync::broadcast::Receiver;
 use tokio::sync::watch;
 use tokio::task::JoinSet;
 
-type MockInitVariant = InitVariant<HashStf, MockZkvm, MockZkvm, MockDaService>;
+type MockInitVariant = InitVariant<HashStf, MockDaService>;
 
-pub type HashStfRunner<Da> =
-    StateTransitionRunner<HashStf, TestStorageManager, Da, MockZkvm, MockZkvm>;
+pub type HashStfRunner<Da> = StateTransitionRunner<HashStf, TestStorageManager, Da>;
 
 /// TestNode simulates a full-node.
 pub struct TestNode {
@@ -196,12 +194,13 @@ pub async fn initialize_runner(
         {
             handle.await.expect("Metrics task errored");
         } else {
-            tracing::warn!("Metics have been initialized outside of the rollup blueprint, some measurements can be lost on shutdown");
+            tracing::warn!("Metrics have been initialized outside of the rollup blueprint, some measurements can be lost on shutdown");
         };
     });
 
     let db_config = RollupDbConfig::default_in_path(path.to_path_buf());
-    let mut storage_manager: TestStorageManager = NomtStorageManager::new(db_config).unwrap();
+    let mut storage_manager: TestStorageManager =
+        NomtStorageManager::new(db_config, false).unwrap();
 
     let finalized_header = da_service.get_last_finalized_block_header().await.unwrap();
     let (_, ledger_state) = storage_manager
@@ -289,6 +288,7 @@ pub async fn initialize_runner(
         let handle = start_zk_workflow_in_background::<_>(
             prover_service,
             rollup_config.proof_manager.aggregated_proof_block_jump,
+            rollup_config.proof_manager.eager_proof_submission,
             Box::new(MockProofSender {
                 da: da_service.clone(),
             }),
@@ -324,16 +324,10 @@ pub async fn initialize_runner(
     )
 }
 
-type GenesisParams<ST, InnerVm, OuterVm, Da> =
-    <ST as StateTransitionFunction<InnerVm, OuterVm, Da>>::GenesisParams;
+type GenesisParams<ST, Da> = <ST as StateTransitionFunction<Da>>::GenesisParams;
 
 /// How [`StateTransitionRunner`] is initialized
-pub enum InitVariant<
-    Stf: StateTransitionFunction<InnerVm, OuterVm, Da::Spec>,
-    InnerVm: Zkvm,
-    OuterVm: Zkvm,
-    Da: DaService,
-> {
+pub enum InitVariant<Stf: StateTransitionFunction<Da::Spec>, Da: DaService> {
     /// From give state root
     Initialized {
         prev_state_root: Stf::StateRoot,
@@ -344,16 +338,14 @@ pub enum InitVariant<
         /// Genesis block header should be finalized at an initialization moment.
         block: Da::FilteredBlock,
         /// Genesis params for Stf::init.
-        genesis_params: GenesisParams<Stf, InnerVm, OuterVm, Da::Spec>,
+        genesis_params: GenesisParams<Stf, Da::Spec>,
     },
 }
 
-impl<Stf, InnerVm, OuterVm, Da> InitVariant<Stf, InnerVm, OuterVm, Da>
+impl<Stf, Da> InitVariant<Stf, Da>
 where
     Stf::PreState: NativeStorage<Root = Stf::StateRoot>,
-    Stf: StateTransitionFunction<InnerVm, OuterVm, Da::Spec>,
-    InnerVm: Zkvm,
-    OuterVm: Zkvm,
+    Stf: StateTransitionFunction<Da::Spec>,
     Da: DaService,
 {
     pub async fn initialize<Sm>(
@@ -385,13 +377,8 @@ where
                 block,
                 genesis_params: params,
             } => {
-                let genesis_state_root = initialize_state::<Stf, InnerVm, OuterVm, Da, Sm>(
-                    stf,
-                    storage_manager,
-                    block,
-                    params,
-                )
-                .await?;
+                let genesis_state_root =
+                    initialize_state::<Stf, Da, Sm>(stf, storage_manager, block, params).await?;
                 (genesis_state_root.clone(), genesis_state_root)
             }
         };
@@ -430,6 +417,7 @@ pub fn rollup_config_with_da<Da: DaService<Config = MockDaConfig>>(
             prover_address: MockAddress::new([0u8; 32]),
             max_number_of_transitions_in_db: NonZero::new(30).unwrap(),
             max_number_of_transitions_in_memory: NonZero::new(20).unwrap(),
+            eager_proof_submission: true,
         },
         sequencer: SequencerConfig {
             automatic_batch_production: true,

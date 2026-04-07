@@ -51,7 +51,7 @@ pub struct TestSequencerSetup<Rt: Runtime<TestSpec>> {
     /// The admin private key used to create an external user account for transaction handling.
     pub admin_private_key: TestPrivateKey,
     /// The Axum server handle used to start the Axum server.
-    pub axum_server_handle: axum_server::Handle,
+    pub axum_server_handle: axum_server::Handle<std::net::SocketAddr>,
     /// The Axum server address.
     pub axum_addr: SocketAddr,
     /// Handler for shutdown of sequencer
@@ -216,7 +216,7 @@ impl<Rt: Runtime<TestSpec>> TestSequencerSetup<Rt> {
             MockDaSpec,
             TestHasher,
             NomtProverStorage<DefaultStorageSpec<TestHasher>, TestSlotHash>,
-        >::new(config)?;
+        >::new(config, false)?;
 
         Self::with_storage_manager(
             dir,

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex, RwLock};
 
@@ -7,17 +8,21 @@ use serde::Serialize;
 use sov_rollup_interface::common::{HexHash, SlotNumber};
 use sov_rollup_interface::node::da::SlotData;
 use sov_rollup_interface::node::ledger_api::AggregatedProofResponse;
-use sov_rollup_interface::stf::{BatchReceipt, DiscardedBlob, StoredEvent, TxReceiptContents};
-use sov_rollup_interface::zk::aggregated_proof::SerializedAggregatedProof;
-
-use crate::schema::tables::DiscardedBlobHahsByNumber;
-use crate::schema::tables::{
-    BatchByHash, BatchByNumber, DiscardedBlobByHash, EventByKey, EventByNumber, FinalizedSlots,
-    ProofByUniqueId, SlotByHash, SlotByNumber, StfInfoByNumber, StfInfoMetadata, TxByHash,
-    TxByNumber, LEDGER_TABLES,
+use sov_rollup_interface::stf::{
+    BatchReceipt, DiscardedBlob, EventKey, StoredEvent, TxReceiptContents,
 };
+use sov_rollup_interface::zk::aggregated_proof::{
+    SerializedAggregatedProof, SerializedPartialProofReceipt,
+};
+
+use crate::schema::tables::{
+    BatchByHash, BatchByNumber, DiscardedBlobByHash, EventByKey, EventByNumber, EventCountByKey,
+    FinalizedSlots, ProofByUniqueId, ProofReceiptHashesBySlot, SlotByHash, SlotByNumber,
+    StfInfoByNumber, StfInfoMetadata, TxByHash, TxByNumber, LEDGER_TABLES,
+};
+use crate::schema::tables::{DiscardedBlobHahsByNumber, ProofReceiptByHash};
 use crate::schema::types::{
-    split_tx_for_storage, BatchNumber, DiscardedBlobNumber, EventNumber,
+    split_tx_for_storage, BatchNumber, DiscardedBlobNumber, EventKeyNumber, EventNumber,
     LatestFinalizedSlotSingleton, ProofUniqueId, StfInfoUniqueId, StoredBatch, StoredDiscardedBlob,
     StoredSlot, StoredStfInfo, StoredTransaction, TxNumber,
 };
@@ -390,10 +395,26 @@ impl LedgerDb {
         event: &StoredEvent,
         event_number: &EventNumber,
         tx_number: TxNumber,
+        event_key_count: u64,
         schema_batch: &mut SchemaBatch,
     ) -> anyhow::Result<()> {
         schema_batch.put::<EventByNumber>(event_number, event)?;
-        schema_batch.put::<EventByKey>(&(event.key().clone(), tx_number, *event_number), &())
+        schema_batch.put::<EventByKey>(&(event.key().clone(), tx_number, *event_number), &())?;
+        schema_batch.put::<EventCountByKey>(event.key(), &EventKeyNumber(event_key_count))
+    }
+
+    /// Gets the current event count for the given key from the database.
+    fn get_event_key_count(&self, key: &EventKey) -> u64 {
+        // We intentionally ignore errors here because a missing or
+        // unreadable count is treated as zero (new key)
+        self.db
+            .read()
+            .expect(DB_LOCK_POISONED)
+            .get::<EventCountByKey>(key)
+            .ok()
+            .flatten()
+            .map(|n| n.0)
+            .unwrap_or(0)
     }
 
     /// Materializes [`SlotCommit`] into [`SchemaBatch`] by inserting its events,
@@ -409,6 +430,8 @@ impl LedgerDb {
 
         let slot_number = current_item_numbers.slot_number;
 
+        let mut event_key_counts: HashMap<EventKey, u64> = HashMap::new();
+
         let first_batch_number = current_item_numbers.batch_number;
         let last_batch_number = first_batch_number + data_to_commit.batch_receipts.len() as u64;
         // Insert data from "bottom up" to ensure consistency if the application crashes during insertion
@@ -422,10 +445,15 @@ impl LedgerDb {
                 let (tx_to_store, events) =
                     split_tx_for_storage(tx, batch_number, current_item_numbers.event_number);
                 for event in events.into_iter() {
+                    let count = event_key_counts
+                        .entry(event.key().clone())
+                        .or_insert_with(|| self.get_event_key_count(event.key()));
+                    *count += 1;
                     self.put_event(
                         &event,
                         &EventNumber(current_item_numbers.event_number),
                         TxNumber(current_item_numbers.tx_number),
+                        *count,
                         &mut schema_batch,
                     )?;
                     current_item_numbers.event_number += 1;
@@ -563,6 +591,37 @@ impl LedgerDb {
         Ok(schema_batch)
     }
 
+    /// Materializes a partial proof receipt into a [`SchemaBatch`].
+    pub fn materialize_proof_receipt<P: Serialize>(
+        &self,
+        hash: [u8; 32],
+        proof_receipt: P, // We pass a generic type and pre-serialize to avoid leaking lots of generics into the ledger db.
+        slot_number: SlotNumber,
+    ) -> anyhow::Result<SchemaBatch> {
+        let mut schema_batch = SchemaBatch::new();
+        let raw_proof_receipt =
+            bincode::serialize(&proof_receipt).expect("serialization to vec is infallible");
+        schema_batch.put::<ProofReceiptByHash>(
+            &hash,
+            &(
+                slot_number,
+                SerializedPartialProofReceipt { raw_proof_receipt },
+            ),
+        )?;
+        Ok(schema_batch)
+    }
+
+    /// Materializes a vector of proof receipt hashes into a [`SchemaBatch`].
+    pub fn materialize_proof_receipt_hashes(
+        &self,
+        hashes: Vec<[u8; 32]>,
+        slot_number: SlotNumber,
+    ) -> anyhow::Result<SchemaBatch> {
+        let mut schema_batch = SchemaBatch::new();
+        schema_batch.put::<ProofReceiptHashesBySlot>(&slot_number, &hashes)?;
+        Ok(schema_batch)
+    }
+
     /// Materializes [`StoredStfInfo`] into [`SchemaBatch`].
     pub fn materialize_stf_info(
         &self,
@@ -648,6 +707,15 @@ impl LedgerDb {
         db.get_async::<DiscardedBlobByHash>(&blob_hash.0).await
     }
 
+    /// Gets the proof receipt (if any) corresponding to the given `hash`.
+    pub async fn get_proof_receipt_by_hash(
+        &self,
+        hash: HexHash,
+    ) -> anyhow::Result<Option<(SlotNumber, SerializedPartialProofReceipt)>> {
+        let db = self.db.read().expect(DB_LOCK_POISONED).clone();
+        db.get_async::<ProofReceiptByHash>(&hash.0).await
+    }
+
     /// Get the head state root hash.
     pub fn get_head_root_hash(db: Arc<rockbound::DB>) -> anyhow::Result<Option<[u8; 64]>> {
         let db = DeltaReader::new(db, Vec::new());
@@ -699,6 +767,14 @@ impl LedgerDb {
                     &current_discarded_blob_number,
                 )?;
             }
+        }
+
+        // Delete all proof receipts for this slot
+        if let Some(proof_receipt_hashes) = db.get::<ProofReceiptHashesBySlot>(&head_slot_number)? {
+            for proof_receipt_hash in proof_receipt_hashes {
+                Self::delete_proof_receipt(&mut schema_batch, proof_receipt_hash)?;
+            }
+            schema_batch.delete::<ProofReceiptHashesBySlot>(&head_slot_number)?;
         }
 
         // Delete all batches, transactions, and events in this slot.
@@ -789,6 +865,7 @@ impl LedgerDb {
 
                 // Delete hash-indexed entries by iterating through txs
                 // (we need tx_number to delete EventByKey, and tx.hash to delete TxByHash)
+                let mut deleted_events_per_key: HashMap<EventKey, u64> = HashMap::new();
                 for current_tx_number in tx_range_start.0..tx_range_end.0 {
                     let current_tx_number = TxNumber(current_tx_number);
 
@@ -821,6 +898,9 @@ impl LedgerDb {
                                 );
                             }
                         };
+                        *deleted_events_per_key
+                            .entry(event.key().clone())
+                            .or_default() += 1;
                         schema_batch.delete::<EventByKey>(&(
                             event.key().clone(),
                             current_tx_number,
@@ -829,6 +909,22 @@ impl LedgerDb {
                     }
                     // Delete TxByHash entry
                     schema_batch.delete::<TxByHash>(&(tx.hash, current_tx_number))?;
+                }
+
+                // Decrement EventCountByKey entries for rolled-back events
+                for (key, deleted_count) in &deleted_events_per_key {
+                    let current_count = db.get::<EventCountByKey>(key)?.map(|n| n.0).unwrap_or(0);
+                    let new_count = current_count.checked_sub(*deleted_count).ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Ledger DB corruption during rollback: event count underflow for key {:?} (current_count={}, deleted_count={})",
+                            key, current_count, deleted_count,
+                        )
+                    })?;
+                    if new_count == 0 {
+                        schema_batch.delete::<EventCountByKey>(key)?;
+                    } else {
+                        schema_batch.put::<EventCountByKey>(key, &EventKeyNumber(new_count))?;
+                    }
                 }
 
                 // Range delete EventByNumber (reduces tombstones).
@@ -888,6 +984,14 @@ impl LedgerDb {
     ) -> anyhow::Result<()> {
         schema_batch.delete::<DiscardedBlobHahsByNumber>(discarded_blob_number)?;
         schema_batch.delete::<DiscardedBlobByHash>(&discarded_blob_hash)?;
+        Ok(())
+    }
+
+    fn delete_proof_receipt(
+        schema_batch: &mut SchemaBatch,
+        proof_receipt_hash: [u8; 32],
+    ) -> anyhow::Result<()> {
+        schema_batch.delete::<ProofReceiptByHash>(&proof_receipt_hash)?;
         Ok(())
     }
 

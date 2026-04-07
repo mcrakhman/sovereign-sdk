@@ -1,5 +1,32 @@
 # @sovereign-sdk/modules
 
+## 0.3.2
+
+### Patch Changes
+
+-   Updated dependencies [c6b4d0f]
+    -   @sovereign-sdk/web3@0.13.1
+
+## 0.3.1
+
+### Patch Changes
+
+-   Updated dependencies [e4a7b37]
+    -   @sovereign-sdk/web3@0.13.0
+
+## 0.3.0
+
+### Minor Changes
+
+-   53fb8ae: Implement getTokenId method for the bank module that derives token ids from inputs
+
+## 0.2.1
+
+### Patch Changes
+
+-   Updated dependencies [ff01be7]
+    -   @sovereign-sdk/web3@0.12.6
+
 ## 0.2.0
 
 ### Minor Changes

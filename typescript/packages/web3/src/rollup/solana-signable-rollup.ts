@@ -125,7 +125,8 @@ export class SolanaSignableRollup<RuntimeCall> {
     return await this.inner.http.post<SovereignClient.Sequencer.TxCreateResponse>(
       this.solanaEndpoint,
       {
-        body: Base64.fromUint8Array(serializedMessage),
+        // Match AcceptTx shape used by standard sequencer endpoints.
+        body: { body: Base64.fromUint8Array(serializedMessage) },
       },
     );
   }
@@ -431,6 +432,14 @@ export class SolanaSignableRollup<RuntimeCall> {
 
   async chainHash() {
     return this.inner.chainHash();
+  }
+
+  /**
+   * Pre-fetches the rollup schema, populating the serializer and chain hash caches.
+   * Call this during initialization to avoid the latency of lazy-loading on the first transaction.
+   */
+  hydrate(): Promise<void> {
+    return this.inner.hydrate();
   }
 
   async healthcheck(timeout?: number) {

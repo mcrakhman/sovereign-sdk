@@ -138,30 +138,31 @@ where
                 )),
             )
             .nest(
-                "/slots/:slotId",
+                "/slots/{slotId}",
                 Self::router_slot(state.clone()).route_layer(middleware::from_fn_with_state(
                     state.clone(),
                     Self::resolve_slot_id,
                 )),
             )
             .nest(
-                "/batches/:batchId",
+                "/batches/{batchId}",
                 Self::router_batch(state.clone()).route_layer(middleware::from_fn_with_state(
                     state.clone(),
                     Self::resolve_batch_id,
                 )),
             )
             .nest(
-                "/txs/:txId",
+                "/txs/{txId}",
                 Self::router_tx(state.clone()).route_layer(middleware::from_fn_with_state(
                     state.clone(),
                     Self::resolve_tx_id,
                 )),
             )
             .route("/events", get(Self::list_events))
+            .route("/events/counts", get(Self::get_event_key_counts))
             .route("/events/latest", get(Self::get_latest_event))
             .nest(
-                "/events/:eventId",
+                "/events/{eventId}",
                 Self::router_event().route_layer(middleware::from_fn_with_state(
                     state,
                     Self::resolve_event_id,
@@ -185,7 +186,7 @@ where
         axum::Router::new()
             .route("/", get(Self::get_slot))
             .nest(
-                "/batches/:batchOffset",
+                "/batches/{batchOffset}",
                 Self::router_batch(state.clone()).layer(middleware::from_fn_with_state(
                     state.clone(),
                     Self::resolve_batch_offset,
@@ -196,7 +197,7 @@ where
 
     fn router_batch(state: LedgerState<T>) -> axum::Router<LedgerState<T>> {
         axum::Router::new().route("/", get(Self::get_batch)).nest(
-            "/txs/:txOffset",
+            "/txs/{txOffset}",
             Self::router_tx(state.clone()).layer(middleware::from_fn_with_state(
                 state.clone(),
                 Self::resolve_tx_offset,
@@ -209,7 +210,7 @@ where
             .route("/", get(Self::get_tx))
             .route("/events", get(Self::get_tx_events))
             .nest(
-                "/events/:eventOffset",
+                "/events/{eventOffset}",
                 Self::router_event().layer(middleware::from_fn_with_state(
                     state,
                     Self::resolve_event_offset,
@@ -349,6 +350,7 @@ where
     async fn list_events(
         State(state): State<LedgerState<T>>,
         pagination_opt: Option<Query<Pagination<String>>>,
+        event_key_prefix_opt: Option<Query<EventFilter>>,
     ) -> ApiResult<Vec<RuntimeEventResponse<E>>> {
         let pagination = match pagination_opt {
             Some(Query(pagination)) => pagination,
@@ -361,9 +363,7 @@ where
             PageSelection::First => 0,
             PageSelection::Last => return Err(errors::not_implemented_501()),
         };
-        let end = start
-            .checked_add(pagination.size as u64)
-            .unwrap_or(u64::MAX);
+        let end = start.saturating_add(pagination.size as u64);
         let nums = (start..=end)
             .map(EventIdentifier::Number)
             .collect::<Vec<_>>();
@@ -374,6 +374,13 @@ where
             .map_err(errors::database_error_response_500)?
             .into_iter()
             .flatten()
+            .filter(|event| {
+                if let Some(prefix) = &event_key_prefix_opt {
+                    event.key.starts_with(&prefix.prefix)
+                } else {
+                    true
+                }
+            })
             .collect::<Vec<_>>();
         Ok(events.into())
     }
@@ -394,6 +401,15 @@ where
             .map_err(errors::database_error_response_500)?
             .ok_or_else(|| errors::not_found_404("Event", event_number))?;
         Ok(event.into())
+    }
+
+    async fn get_event_key_counts(
+        State(state): State<LedgerState<T>>,
+    ) -> ApiResult<HashMap<String, u64>> {
+        match state.ledger.get_event_key_counts().await {
+            Ok(counts) => Ok(counts.into_iter().collect::<HashMap<_, _>>().into()),
+            Err(err) => Err(errors::database_error_response_500(err)),
+        }
     }
 
     // ENTITY ID RESOLVERS

@@ -9,7 +9,8 @@ use crate::common::{
     WithCachedTxHashes,
 };
 use crate::{
-    ProofBlobSender, SequencerConfig, SequencerNotReadyDetails, TxHash, TxStatus, TxStatusManager,
+    ProofBlobSender, SequencerConfig, SequencerNotReadyDetails, SerializedProofWithDetailsBytes,
+    TxHash, TxStatus, TxStatusManager,
 };
 use anyhow::Context;
 use async_trait::async_trait;
@@ -19,6 +20,7 @@ use sov_db::ledger_db::LedgerDb;
 pub use sov_full_node_configs::sequencer::StdSequencerConfig;
 use sov_metrics::{AuthAndProcessMetrics, AuthAndProcessTimings};
 use sov_modules_api::capabilities::{AuthenticationError, ChainState};
+use sov_modules_api::macros::config_value;
 use sov_modules_api::rest::utils::ErrorObject;
 use sov_modules_api::rest::{ApiState, StateUpdateReceiver};
 use sov_modules_api::transaction::SequencerReward;
@@ -134,9 +136,12 @@ where
         let kernel_with_slot_mapping = runtime.kernel_with_slot_mapping();
 
         let latest_state_update = state_update_receiver.borrow().clone();
-        let checkpoint = Arc::new(ConcurrentStateCheckpoint::from_state_checkpoint(
-            StateCheckpoint::new(latest_state_update.storage.clone(), &runtime.kernel(), None),
-        ));
+        let checkpoint = Arc::new(
+            ConcurrentStateCheckpoint::from_state_checkpoint_with_finalized_slot(
+                StateCheckpoint::new(latest_state_update.storage.clone(), &runtime.kernel(), None),
+                latest_state_update.latest_finalized_slot_number,
+            ),
+        );
         let (checkpoint_sender, checkpoint_receiver) = watch::channel(checkpoint);
 
         let api_state = ApiState::build(
@@ -320,7 +325,7 @@ where
     }
 
     async fn produce_batch(&self) -> anyhow::Result<Option<WithCachedTxHashes<Vec<FullyBakedTx>>>> {
-        tracing::debug!("`produce_batch` has been called");
+        tracing::trace!("`produce_batch` has been called");
         let mut inner = self.inner.lock().await;
 
         // We already have a batch assembled. We'll wait until it's popped
@@ -348,10 +353,12 @@ where
             let mut txs = Vec::new();
 
             let count_before = mempool.len();
-            tracing::debug!(
-                txs_count = count_before,
-                "Going to build batch from transactions in mempool"
-            );
+            if count_before > 0 {
+                tracing::debug!(
+                    txs_count = count_before,
+                    "Going to build batch from transactions in mempool"
+                );
+            }
 
             let mut cursor = self.mempool_cursor(&ctx);
 
@@ -665,6 +672,7 @@ where
             storage,
             slot_number,
             ledger_reader,
+            latest_finalized_slot_number,
             ..
         } = &state_update_info;
         let checkpoint = StateCheckpoint::new(storage.clone(), &Rt::default().kernel(), None);
@@ -677,10 +685,15 @@ where
         {
             let mut inner = self.inner.lock().await;
             self.checkpoint_sender
-                .send(Arc::new(ConcurrentStateCheckpoint::from_state_checkpoint(
-                    checkpoint
-                        .clone_with_empty_witness_dropping_temp_cache_and_ignoring_pinned_cache(),
-                )))
+                .send(Arc::new(
+                    // Standard sequencer preserves true finality as reported by the node.
+                    ConcurrentStateCheckpoint::from_state_checkpoint_with_finalized_slot(
+                        checkpoint
+                            .clone_with_empty_witness_dropping_temp_cache_and_ignoring_pinned_cache(
+                            ),
+                        *latest_finalized_slot_number,
+                    ),
+                ))
                 .ok();
             inner.checkpoint = Some(checkpoint);
         }
@@ -708,6 +721,17 @@ where
         baked_tx: FullyBakedTx,
         _ip_addr: IpAddr,
     ) -> Result<AcceptedTx<Self::Confirmation>, ErrorObject> {
+        if baked_tx.data.len() > config_value!("MAX_TX_SIZE") {
+            return Err(ErrorObject {
+                status: StatusCode::PAYLOAD_TOO_LARGE,
+                message: "Transaction is too big".to_string(),
+                details: json_obj!({
+                    "max_allowed_size": config_value!("MAX_TX_SIZE"),
+                    "submitted_size": baked_tx.len(),
+                }),
+            });
+        }
+
         let sequencer = self.clone();
         tokio::spawn(async move { sequencer.accept_tx_inner(baked_tx).await })
             .await
@@ -750,13 +774,18 @@ where
     Rt: Runtime<S>,
     Da: DaService<Spec = S::Da>,
 {
-    async fn produce_and_publish_proof_blob(&self, proof_blob: Arc<[u8]>) -> anyhow::Result<()> {
+    async fn produce_and_publish_proof_blob(
+        &self,
+        proof_blob: SerializedProofWithDetailsBytes,
+    ) -> anyhow::Result<()> {
         let blob_id = new_blob_id();
 
         // TODO: Put SerializedAggregatedProof directly on chain without
         // wrapping in a vec
         // <https://github.com/Sovereign-Labs/sovereign-sdk-wip/issues/1065>
-        let blob_bytes = borsh::to_vec(&proof_blob)?.into();
+        // Note: This behavior of double-serializing is leftover from the previous implementation.
+        // TODO: Decide whether this can be safely removed (i.e. does the blob selector expect the payload to have been double-serialized?)
+        let blob_bytes = borsh::to_vec(&proof_blob.0)?.into();
 
         debug!(blob_id, "Dispatching proof blob for publishing");
 

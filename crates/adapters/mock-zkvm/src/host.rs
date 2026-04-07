@@ -1,9 +1,8 @@
 use std::collections::VecDeque;
 
-use serde::Serialize;
-
 use crate::notifier::NotificationManager;
-use crate::{Empty, Inner, MockCodeCommitment, MockZkGuest, Proof};
+use crate::{MockCodeCommitment, MockProof, MockZkGuest};
+use serde::Serialize;
 
 /// A mock implementing the zkVM trait.
 #[derive(Clone)]
@@ -41,10 +40,10 @@ impl MockZkvmHost {
     /// Create a proof for MockZkvm
     pub fn create_serialized_proof<T: Serialize>(is_valid: bool, transition: T) -> Vec<u8> {
         let data = bincode::serialize(&transition).unwrap();
-        bincode::serialize(&Proof::<(), Inner>::PublicData(Inner {
+        bincode::serialize(&MockProof {
             is_valid,
             pub_data: data,
-        }))
+        })
         .unwrap()
     }
 }
@@ -65,22 +64,19 @@ impl sov_rollup_interface::zk::ZkvmHost for MockZkvmHost {
         self.committed_data.push_back(data);
     }
 
-    fn code_commitment(&self) -> <<Self::Guest as sov_rollup_interface::zk::ZkvmGuest>::Verifier as sov_rollup_interface::zk::ZkVerifier>::CodeCommitment{
-        MockCodeCommitment::default()
+    fn code_commitment(&self) -> anyhow::Result<<<Self::Guest as sov_rollup_interface::zk::ZkvmGuest>::Verifier as sov_rollup_interface::zk::ZkVerifier>::CodeCommitment>{
+        Ok(MockCodeCommitment::default())
     }
 
-    fn run(&mut self, _with_proof: bool) -> anyhow::Result<Vec<u8>> {
+    fn run(&mut self) -> anyhow::Result<Vec<u8>> {
         if self.wait_for_proof {
             self.notification_manager.wait();
         }
         let data = self.committed_data.pop_front().unwrap_or_default();
-        Ok(bincode::serialize(&sov_rollup_interface::zk::Proof::<
-            Empty,
-            _,
-        >::PublicData(Inner {
+        Ok(bincode::serialize(&MockProof {
             is_valid: true,
             pub_data: data,
-        }))?)
+        })?)
     }
 
     fn from_args(_args: &Self::HostArgs) -> Self {

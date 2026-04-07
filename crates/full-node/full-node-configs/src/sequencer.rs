@@ -2,6 +2,7 @@ use std::{net::IpAddr, num::NonZero};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use sov_rollup_interface::common::RollupHeight;
 
 /// See [`SequencerConfig::sequencer_kind_config`].
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
@@ -26,13 +27,13 @@ impl<Address: Copy + serde::Serialize + serde::de::DeserializeOwned> Default
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, Copy)]
 pub struct SeqConfigExtension {
     pub max_log_limit: usize,
-    /// The maximum size of the response to the eth_getLogs RPC endpoint. Use 1MB - 30KB for a safe default.
+    /// The maximum size of the response to the eth_getLogs RPC endpoint. Use 1 MiB - 30 KiB for a safe default.
     #[serde(default = "default_response_size_limit")]
     pub response_size_limit: usize,
 }
 
 fn default_response_size_limit() -> usize {
-    (1024 * 1024) - (1024 * 30) // Limit our response size to 1MB, leaving 30kb for headers, overhead, and misestimation.
+    (1024 * 1024) - (1024 * 30) // Limit our response size to 1 MiB, leaving 30 KiB for headers, overhead, and misestimation.
 }
 
 /// Sequencer configuration.
@@ -343,6 +344,24 @@ pub struct SovRateLimiterConfig<Address: Copy> {
     pub default_limits: Limits,
     pub address_custom_limits: Vec<(Address, Limits)>,
     pub ip_custom_limits: Vec<(IpAddr, Limits)>,
+    /// Rate limiting on gas is currently disabled, so this param has no impact on runtime behavior.
+    ///
+    /// This height is used to statically compute the gas limit for the rate limiter. (If this value is less than or equal to CHANGE_GAS_LIMIT_AFTER_HEIGHT in constants.toml,
+    /// the gas limit will *always* be computed using the initial gas limit for rate limiting. If it is greater, the gas limit will be computed using the updated gas limit.)
+    /// Even after rate limiting based on gas is enabled, you can safely change this param at any time since it only impacts off-chain code.
+    #[serde(
+        default = "default_height_for_gas_limit_computation",
+        skip_serializing_if = "height_is_max"
+    )]
+    pub height_for_gas_limit_computation: RollupHeight,
+}
+
+fn default_height_for_gas_limit_computation() -> RollupHeight {
+    RollupHeight::MAX
+}
+
+fn height_is_max(height: &RollupHeight) -> bool {
+    *height == RollupHeight::MAX
 }
 
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, Eq, PartialEq, JsonSchema)]
