@@ -23,6 +23,25 @@ impl fmt::Debug for GrpcEndpointConfig {
     }
 }
 
+/// Configuration for a single RPC (DA) fallback endpoint.
+#[derive(Clone, PartialEq, serde::Deserialize, serde::Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RpcEndpointConfig {
+    /// The URL of the RPC endpoint, for example `http://fallback1:26658`.
+    pub url: String,
+    /// Optional authentication token (JWT) for the RPC endpoint.
+    pub token: Option<String>,
+}
+
+impl fmt::Debug for RpcEndpointConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RpcEndpointConfig")
+            .field("url", &self.url)
+            .field("token", &self.token.as_ref().map(|_| "REDACTED"))
+            .finish()
+    }
+}
+
 /// Runtime configuration for the [`sov_rollup_interface::node::da::DaService`] implementation.
 #[derive(Clone, PartialEq, serde::Deserialize, serde::Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -39,6 +58,15 @@ pub struct CelestiaConfig {
     /// Optional.
     #[serde(default = "default_rpc_auth_token", alias = "celestia_rpc_auth_token")]
     pub rpc_auth_token: Option<String>,
+
+    /// Optional list of fallback RPC (DA) endpoints for reads.
+    /// Used alongside `rpc_url` for failover. Each entry has a mandatory `url`
+    /// and an optional `token` (JWT). Endpoints are tried in priority order,
+    /// with `rpc_url` preferred; the shared failover engine switches back once
+    /// the preferred endpoint recovers.
+    /// Default: empty (no fallback endpoints).
+    #[serde(default)]
+    pub rpc_fallback_endpoints: Vec<RpcEndpointConfig>,
 
     /// The address of the Celestia gRPC server, for example, http://localhost:9090
     /// If not specified in the config, will be pulled from `SOV_CELESTIA_GRPC_URL`.
@@ -141,6 +169,7 @@ impl fmt::Debug for CelestiaConfig {
                 "rpc_auth_token",
                 &self.rpc_auth_token.as_ref().map(|_| "REDACTED"),
             )
+            .field("rpc_fallback_endpoints", &self.rpc_fallback_endpoints)
             .field("grpc_url", &self.grpc_url)
             .field(
                 "grpc_auth_token",
@@ -254,6 +283,7 @@ impl CelestiaConfig {
         Self {
             rpc_url,
             rpc_auth_token: None,
+            rpc_fallback_endpoints: Vec::new(),
             grpc_url: None,
             grpc_auth_token: None,
             grpc_fallback_endpoints: Vec::new(),
@@ -304,6 +334,14 @@ impl CelestiaConfig {
 
         if let Some(rpc_auth_token) = &self.rpc_auth_token {
             builder = builder.rpc_auth_token(rpc_auth_token);
+        }
+        // RPC (DA) failover endpoints. Tried after `rpc_url`, in priority order.
+        for ep in &self.rpc_fallback_endpoints {
+            let mut endpoint = celestia_client::RpcEndpoint::new(ep.url.clone());
+            if let Some(token) = &ep.token {
+                endpoint = endpoint.auth_token(token);
+            }
+            builder = builder.rpc_endpoint(endpoint);
         }
         // Submission section.
         if self.grpc_url.is_none() && !self.grpc_fallback_endpoints.is_empty() {
